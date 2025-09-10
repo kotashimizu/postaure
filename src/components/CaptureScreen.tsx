@@ -59,10 +59,22 @@ export default function CaptureScreen({ onImagesCapture, onError }: CaptureScree
     // Initialize camera only in camera mode
     if (captureMode === 'camera') {
       announceStatus('カメラモードに切り替えました');
-      initializeCamera('user').catch((error) => {
-        announceAction('カメラの起動に失敗しました');
-        onError(error);
-      });
+      
+      // Add a small delay to prevent immediate startup errors
+      const timeoutId = setTimeout(() => {
+        console.log('[CaptureScreen] Starting camera initialization after delay');
+        initializeCamera('user').catch((error) => {
+          console.error('[CaptureScreen] Camera initialization error:', error);
+          announceAction('カメラの起動に失敗しました');
+          onError(error);
+        });
+      }, 500); // 500ms delay
+      
+      // Cleanup timeout on unmount or mode change
+      return () => {
+        clearTimeout(timeoutId);
+        stopCamera();
+      };
     } else {
       announceStatus('アップロードモードに切り替えました');
       stopCamera();
@@ -176,12 +188,46 @@ export default function CaptureScreen({ onImagesCapture, onError }: CaptureScree
   if (cameraState.error) {
     return (
       <div className="capture-screen">
-        <div className="error-message">
-          <h2>カメラエラー</h2>
-          <p>{cameraState.error}</p>
-          <button onClick={() => initializeCamera('user')} className="btn-secondary">
-            再試行
-          </button>
+        <div className="error-message" style={{ maxWidth: '600px', margin: '2rem auto', padding: '2rem', textAlign: 'center' }}>
+          <h2 style={{ color: 'var(--color-error)', marginBottom: '1rem' }}>📷 カメラエラー</h2>
+          <p style={{ marginBottom: '2rem', fontSize: '1.1rem' }}>{cameraState.error}</p>
+          
+          <div style={{ background: '#f0f4f8', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem', textAlign: 'left' }}>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>トラブルシューティング:</h3>
+            <ol style={{ paddingLeft: '1.5rem', lineHeight: '1.8' }}>
+              <li>ブラウザのアドレスバー付近のカメラアイコンをクリックしてアクセスを許可</li>
+              <li>他のアプリがカメラを使用していないか確認</li>
+              <li>ブラウザを再起動してから再度お試しください</li>
+              {captureMode === 'camera' && (
+                <li>それでも解決しない場合は「写真を選択」モードをご利用ください</li>
+              )}
+            </ol>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button 
+              onClick={() => {
+                console.log('[CaptureScreen] Retrying camera initialization');
+                initializeCamera('user').catch((error) => {
+                  console.error('[CaptureScreen] Retry failed:', error);
+                  onError(error);
+                });
+              }} 
+              className="btn-primary"
+              style={{ padding: '0.75rem 2rem' }}
+            >
+              🔄 再試行
+            </button>
+            {captureMode === 'camera' && (
+              <button 
+                onClick={() => setCaptureMode('upload')} 
+                className="btn-secondary"
+                style={{ padding: '0.75rem 2rem' }}
+              >
+                📁 写真を選択
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

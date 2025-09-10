@@ -27,11 +27,13 @@ export function useCamera() {
   const [capabilities, setCapabilities] = useState<CameraCapabilities | null>(null);
 
   const initializeCamera = async (facingMode: 'user' | 'environment' = 'user') => {
+    console.log('[Camera] Starting camera initialization:', { facingMode, timestamp: new Date().toISOString() });
     setCameraState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
       // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('[Camera] getUserMedia not supported');
         throw new Error('カメラアクセスがサポートされていません');
       }
 
@@ -46,14 +48,20 @@ export function useCamera() {
         audio: false
       };
 
+      console.log('[Camera] Requesting camera access with constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('[Camera] Camera stream obtained:', { streamId: stream.id, tracks: stream.getTracks().length });
       
       // Set up video element
       if (videoRef.current) {
+        console.log('[Camera] Setting video stream');
         videoRef.current.srcObject = stream;
         await new Promise<void>((resolve) => {
           if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => resolve();
+            videoRef.current.onloadedmetadata = () => {
+              console.log('[Camera] Video metadata loaded');
+              resolve();
+            };
           }
         });
       }
@@ -75,11 +83,14 @@ export function useCamera() {
         hasPermission: true
       });
 
+      console.log('[Camera] Camera initialization successful');
       return stream;
     } catch (error) {
+      console.error('[Camera] Camera initialization failed:', error);
       let errorMessage = 'カメラの初期化に失敗しました';
       
       if (error instanceof Error) {
+        console.error('[Camera] Error details:', { name: error.name, message: error.message });
         if (error.name === 'NotAllowedError') {
           errorMessage = 'カメラアクセスが拒否されました。ブラウザの設定でカメラへのアクセスを許可してください。';
         } else if (error.name === 'NotFoundError') {

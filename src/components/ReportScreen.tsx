@@ -2,6 +2,13 @@ import { useState } from 'react';
 import type { EnhancedPostureAnalysisResult } from '../services/EnhancedPostureAnalysisService';
 import LandmarkVisualizer from './LandmarkVisualizer';
 import { reportGenerationService } from '../services/ReportGenerationService';
+import { sharingService } from '../services/SharingService';
+import { aiReportService } from '../services/AIReportService';
+import type { AIReportOptions, AIGeneratedReport } from '../services/AIReportService';
+import APIConfigModal from './APIConfigModal';
+import AIReportModal from './AIReportModal';
+import './APIConfigModal.css';
+import './AIReportModal.css';
 
 interface ImageData {
   blob: Blob;
@@ -25,6 +32,11 @@ export default function ReportScreen({
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingJSON, setIsGeneratingJSON] = useState(false);
   const [isGeneratingPNG, setIsGeneratingPNG] = useState(false);
+  const [isAPIConfigOpen, setIsAPIConfigOpen] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [isGeneratingAIReport, setIsGeneratingAIReport] = useState(false);
+  const [currentAIReport, setCurrentAIReport] = useState<AIGeneratedReport | null>(null);
+  const [isAIReportModalOpen, setIsAIReportModalOpen] = useState(false);
 
   const handlePDFExport = async () => {
     setIsGeneratingPDF(true);
@@ -69,30 +81,86 @@ export default function ReportScreen({
   };
 
   const handleImageShare = async () => {
-    if (navigator.share) {
-      try {
-        const frontalFile = new File([originalImages.frontal.blob], 'frontal-analysis.png', {
-          type: 'image/png'
-        });
-        const sagittalFile = new File([originalImages.sagittal.blob], 'sagittal-analysis.png', {
-          type: 'image/png'
-        });
+    setIsSharing(true);
+    try {
+      const imageBlobs = {
+        frontal: originalImages.frontal.blob,
+        sagittal: originalImages.sagittal.blob
+      };
 
-        const cvaAngle = analysisResults.sagittal.jointAngles.find(j => j.name === 'Cranio-Vertebral Angle');
-        const cvaText = cvaAngle ? `CVA: ${cvaAngle.angle.toFixed(1)}°` : '';
-        
-        await navigator.share({
-          title: '姿勢分析結果',
-          text: `${cvaText}\nKendall分類: ${analysisResults.kendallClassification.category}\n重症度: ${analysisResults.kendallClassification.severity}`,
-          files: [frontalFile, sagittalFile]
-        });
-      } catch (error) {
-        console.error('Share failed:', error);
+      const result = await sharingService.shareAnalysisResults(analysisResults, imageBlobs);
+      
+      if (!result.success) {
+        console.error('Share failed:', result.error);
+        // Fallback to download
+        handleImageDownload();
       }
-    } else {
-      // Fallback: download images
+    } catch (error) {
+      console.error('Share error:', error);
       handleImageDownload();
+    } finally {
+      setIsSharing(false);
     }
+  };
+
+  const handleAdvancedShare = async () => {
+    setIsSharing(true);
+    try {
+      await sharingService.shareAnalysisResults(analysisResults);
+    } catch (error) {
+      console.error('Advanced share failed:', error);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleSocialShare = async (platform: 'twitter' | 'facebook' | 'linkedin') => {
+    const shareOptions = {
+      title: 'Postaure - 姿勢分析結果',
+      text: '詳細な姿勢分析を実施しました。科学的な手法でPostural assessmentを行っています。',
+      url: window.location.href
+    };
+
+    await sharingService.shareToSocialMedia(platform, shareOptions);
+  };
+
+  const handleGenerateAIReport = async () => {
+    if (!aiReportService.isAIAvailable()) {
+      alert('AI機能を使用するにはAPIエンドポイントの設定が必要です。');
+      setIsAPIConfigOpen(true);
+      return;
+    }
+
+    setIsGeneratingAIReport(true);
+    try {
+      const options: AIReportOptions = {
+        language: 'ja',
+        detailLevel: 'detailed',
+        includeExercises: true,
+        includeNutrition: true,
+        includeRiskAssessment: true,
+        includeLongTermPlan: true
+      };
+
+      const result = await aiReportService.generateAIReport(analysisResults, options);
+      
+      if (result.success && result.report) {
+        setCurrentAIReport(result.report);
+        setIsAIReportModalOpen(true);
+      } else {
+        alert(result.error || 'AI分析レポートの生成に失敗しました。');
+      }
+    } catch (error) {
+      console.error('AI report generation failed:', error);
+      alert('AI分析レポートの生成中にエラーが発生しました。');
+    } finally {
+      setIsGeneratingAIReport(false);
+    }
+  };
+
+  const handleCloseAIReportModal = () => {
+    setIsAIReportModalOpen(false);
+    setCurrentAIReport(null);
   };
 
   const handlePNGExport = async () => {
@@ -329,9 +397,73 @@ export default function ReportScreen({
 
           <button
             onClick={handleImageShare}
+            disabled={isSharing}
             className="btn-secondary"
           >
-            画像を共有
+            {isSharing ? '共有中...' : '📤 画像を共有'}
+          </button>
+        </div>
+      </div>
+
+      <div className="sharing-section">
+        <h3>📤 共有オプション</h3>
+        <p>分析結果を様々な方法で共有できます</p>
+        
+        <div className="sharing-options">
+          <div className="share-row">
+            <h4>🔗 テキストで共有</h4>
+            <div className="share-buttons">
+              <button
+                onClick={handleAdvancedShare}
+                disabled={isSharing}
+                className="btn-share-text"
+              >
+                {isSharing ? '処理中...' : '📋 結果を共有'}
+              </button>
+              
+              <button
+                onClick={() => handleSocialShare('twitter')}
+                className="btn-twitter"
+              >
+                🐦 Twitter
+              </button>
+              
+              <button
+                onClick={() => handleSocialShare('facebook')}
+                className="btn-facebook"
+              >
+                📘 Facebook
+              </button>
+              
+              <button
+                onClick={() => handleSocialShare('linkedin')}
+                className="btn-linkedin"
+              >
+                💼 LinkedIn
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="ai-integration-section">
+        <h3>AI統合機能 (オプション)</h3>
+        <p>AIを活用した高度な分析と個別化レポート生成</p>
+        
+        <div className="ai-buttons">
+          <button
+            onClick={() => setIsAPIConfigOpen(true)}
+            className="btn-api-config"
+          >
+            ⚙️ API設定
+          </button>
+          
+          <button
+            onClick={handleGenerateAIReport}
+            disabled={isGeneratingAIReport || !aiReportService.isAIAvailable()}
+            className="btn-ai-report"
+          >
+            {isGeneratingAIReport ? '🔄 AI分析中...' : '🤖 AI分析レポート'}
           </button>
         </div>
       </div>
@@ -345,6 +477,18 @@ export default function ReportScreen({
           新しい解析を開始
         </button>
       </div>
+
+      <APIConfigModal 
+        isOpen={isAPIConfigOpen} 
+        onClose={() => setIsAPIConfigOpen(false)} 
+      />
+
+      <AIReportModal
+        isOpen={isAIReportModalOpen}
+        onClose={handleCloseAIReportModal}
+        report={currentAIReport}
+        originalAnalysis={analysisResults}
+      />
     </div>
   );
 }

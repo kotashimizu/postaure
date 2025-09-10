@@ -1,6 +1,8 @@
 # Postaure - Advanced Posture Analysis Application
 
-**Postaure** is a privacy-first, professional-grade posture analysis web application that provides clinical-level assessments using computer vision technology.
+**Postaure**は、MediaPipe技術を活用したプロフェッショナル級の姿勢分析アプリケーションです。Kendall法に基づく詳細な姿勢評価と包括的な分析レポートを提供します。
+
+![Postaure](./public/icon-192x192.png)
 
 ## 🎯 Key Features
 
