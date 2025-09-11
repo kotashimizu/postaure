@@ -1,17 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useCamera } from '../hooks/useCamera';
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 import { useAnnouncer } from '../hooks/useAnnouncer';
+import type { ImageData } from '../types';
 import CameraGuide from './CameraGuide';
 import ImageUpload from './ImageUpload';
-
-interface ImageData {
-  blob: Blob;
-  width: number;
-  height: number;
-  timestamp: number;
-  viewType: 'frontal' | 'sagittal';
-}
+import LoadingSpinner from './LoadingSpinner';
 
 interface CaptureScreenProps {
   onImagesCapture: (frontal: ImageData, sagittal: ImageData) => void;
@@ -95,7 +89,7 @@ export default function CaptureScreen({ onImagesCapture, onError }: CaptureScree
     }
   }, [cameraState.hasPermission]);
 
-  const handleCapture = async () => {
+  const handleCapture = useCallback(async () => {
     if (!cameraState.hasPermission || isCapturing) return;
     
     setIsCapturing(true);
@@ -126,19 +120,19 @@ export default function CaptureScreen({ onImagesCapture, onError }: CaptureScree
     } finally {
       setIsCapturing(false);
     }
-  };
+  }, [cameraState.hasPermission, isCapturing, currentView, announceAction, capturePhoto, capabilities, frontalImage, onImagesCapture, announceStatus, onError]);
 
-  const handleRetake = () => {
+  const handleRetake = useCallback(() => {
     if (currentView === 'sagittal') {
       setCurrentView('frontal');
       setFrontalImage(null);
     }
-  };
+  }, [currentView]);
 
-  const handleSkipGuide = () => {
+  const handleSkipGuide = useCallback(() => {
     // Allow capture even if not perfectly aligned
     setIsAligned(true);
-  };
+  }, []);
 
   const handleImageUpload = async (file: File) => {
     try {
@@ -268,10 +262,7 @@ export default function CaptureScreen({ onImagesCapture, onError }: CaptureScree
         <div className="camera-preview" aria-label={`${currentView === 'frontal' ? '正面' : '側面'}画像プレビュー`}>
           {captureMode === 'camera' ? (
             cameraState.isLoading ? (
-              <div className="camera-placeholder">
-                <div className="loading-spinner"></div>
-                <p>カメラを初期化中...</p>
-              </div>
+              <LoadingSpinner message="カメラを初期化中..." />
             ) : cameraState.hasPermission ? (
               <>
                 <video

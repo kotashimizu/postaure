@@ -10,18 +10,10 @@ import ErrorBoundary from './components/ErrorBoundary'
 import ErrorMessage from './components/ErrorMessage'
 import { useErrorHandler } from './hooks/useErrorHandler'
 import { useDeviceAdaptation } from './hooks/useDeviceAdaptation'
+import type { ImageData } from './types'
 import type { EnhancedPostureAnalysisResult } from './services/EnhancedPostureAnalysisService'
 import type { CompatibilityResult } from './utils/compatibilityChecker'
-import type { DeviceInfo } from './utils/deviceDetection'
 import './App.css'
-
-interface ImageData {
-  blob: Blob;
-  width: number;
-  height: number;
-  timestamp: number;
-  viewType: 'frontal' | 'sagittal';
-}
 
 
 type AppState = 'compatibility' | 'capture' | 'analysis' | 'report' | 'error';
@@ -82,7 +74,7 @@ function App() {
     setError(null);
   };
 
-  const handleCompatibilityComplete = (result: CompatibilityResult, _deviceInfo: DeviceInfo) => {
+  const handleCompatibilityComplete = (result: CompatibilityResult) => {
     if (result.isSupported) {
       localStorage.setItem('compatibility_passed', 'true');
       setAppState('capture');

@@ -31,7 +31,7 @@ const AIReportModal: React.FC<AIReportModalProps> = ({
       };
 
       await reportGenerationService.generateReport(
-        enhancedReport as any,
+        enhancedReport as EnhancedPostureAnalysisResult,
         { frontal: { blob: new Blob(), width: 0, height: 0, timestamp: Date.now(), viewType: 'frontal' as const }, 
           sagittal: { blob: new Blob(), width: 0, height: 0, timestamp: Date.now(), viewType: 'sagittal' as const } },
         {
