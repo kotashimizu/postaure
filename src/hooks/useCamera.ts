@@ -56,11 +56,27 @@ export function useCamera() {
       if (videoRef.current) {
         console.log('[Camera] Setting video stream');
         videoRef.current.srcObject = stream;
-        await new Promise<void>((resolve) => {
+        
+        // Wait for video to be ready and start playing
+        await new Promise<void>((resolve, reject) => {
           if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => {
+            const video = videoRef.current;
+            
+            video.onloadedmetadata = async () => {
               console.log('[Camera] Video metadata loaded');
-              resolve();
+              try {
+                await video.play();
+                console.log('[Camera] Video playing');
+                resolve();
+              } catch (playError) {
+                console.error('[Camera] Failed to play video:', playError);
+                reject(playError);
+              }
+            };
+            
+            video.onerror = (error) => {
+              console.error('[Camera] Video error:', error);
+              reject(new Error('ビデオの読み込みに失敗しました'));
             };
           }
         });
@@ -120,6 +136,13 @@ export function useCamera() {
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    
+    // Ensure video is playing and has dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error('[Camera] Video dimensions are zero:', { width: video.videoWidth, height: video.videoHeight });
+      throw new Error('ビデオが正しく読み込まれていません');
+    }
+    
     const context = canvas.getContext('2d');
 
     if (!context) {
@@ -129,19 +152,28 @@ export function useCamera() {
     // Set canvas dimensions to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
+    
+    console.log('[Camera] Capturing photo:', { width: canvas.width, height: canvas.height });
 
     // Draw video frame to canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert canvas to blob
+    // Convert canvas to blob with error handling
     return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error('画像の生成に失敗しました'));
-        }
-      }, 'image/png', 0.9);
+      try {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            console.log('[Camera] Photo captured successfully:', { size: blob.size, type: blob.type });
+            resolve(blob);
+          } else {
+            console.error('[Camera] toBlob returned null');
+            reject(new Error('画像の生成に失敗しました'));
+          }
+        }, 'image/jpeg', 0.8); // Use JPEG instead of PNG for better compatibility
+      } catch (error) {
+        console.error('[Camera] toBlob error:', error);
+        reject(error);
+      }
     });
   };
 

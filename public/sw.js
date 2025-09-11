@@ -107,6 +107,11 @@ self.addEventListener('fetch', event => {
     return;
   }
   
+  // Skip chrome-extension and other non-http requests
+  if (!url.startsWith('http')) {
+    return;
+  }
+  
   // Skip requests that should never be cached
   if (NEVER_CACHE.some(pattern => pattern.test(url))) {
     return;
@@ -213,7 +218,7 @@ async function handleStaticAsset(request) {
     
     // If not cached, fetch and cache
     const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
+    if (networkResponse.ok && request.url.startsWith('http')) {
       const cache = await caches.open(STATIC_CACHE);
       cache.put(request, networkResponse.clone());
     }
@@ -237,7 +242,7 @@ async function handleDynamicRequest(request) {
   try {
     const networkResponse = await fetch(request);
     
-    if (networkResponse.ok) {
+    if (networkResponse.ok && request.url.startsWith('http')) {
       const cache = await caches.open(DYNAMIC_CACHE);
       cache.put(request, networkResponse.clone());
     }

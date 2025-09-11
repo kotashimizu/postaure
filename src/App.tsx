@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import CaptureScreen from './components/CaptureScreen'
 import AnalysisScreen from './components/AnalysisScreen'
 import ReportScreen from './components/ReportScreen'
-import OfflineIndicator from './components/OfflineIndicator'
 import CompatibilityCheck from './components/CompatibilityCheck'
 import SettingsButton from './components/SettingsButton'
 import PerformancePanel from './components/PerformancePanel'
@@ -41,6 +40,18 @@ function App() {
   useEffect(() => {
     // Initialize offline service on app start
     console.log('Initializing offline service...');
+    
+    // Suppress locator-js warnings in development
+    if (import.meta.env.DEV) {
+      const originalError = console.error;
+      console.error = (...args) => {
+        const message = args[0];
+        if (typeof message === 'string' && message.includes('locator')) {
+          return; // Suppress locator-js warnings
+        }
+        originalError.apply(console, args);
+      };
+    }
     
     // Auto-skip compatibility check in development or if already passed
     if (import.meta.env.DEV || localStorage.getItem('compatibility_passed') === 'true') {
@@ -84,7 +95,6 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="app" data-device-type={deviceInfo?.isMobile ? 'mobile' : deviceInfo?.isTablet ? 'tablet' : 'desktop'}>
-        <OfflineIndicator className="app-offline-indicator" />
         <SettingsButton className="app-settings-button" position="fixed" />
         {showCompatibilityCheck && (
           <CompatibilityCheck 
