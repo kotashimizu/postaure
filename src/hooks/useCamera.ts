@@ -13,6 +13,83 @@ interface CameraCapabilities {
   facingMode: string;
 }
 
+const isIOSDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = (navigator.platform || '').toLowerCase();
+  const iOSPattern = /iphone|ipad|ipod/gi;
+  const isIOSUA = iOSPattern.test(ua);
+  const isIOSMacTouch = platform === 'macintel' && navigator.maxTouchPoints > 1;
+  return isIOSUA || isIOSMacTouch;
+};
+
+const buildConstraintCandidates = (facingMode: 'user' | 'environment'): MediaStreamConstraints[] => {
+  const isIOS = isIOSDevice();
+
+  const baseResolutions = isIOS
+    ? [
+        { width: { ideal: 640 }, height: { ideal: 960 } },
+        { width: { ideal: 720 }, height: { ideal: 1280 } },
+        { width: { ideal: 960 }, height: { ideal: 1280 } },
+        { width: { ideal: 1080 }, height: { ideal: 1920 } }
+      ]
+    : [
+        { width: { ideal: 1080 }, height: { ideal: 1920 } },
+        { width: { ideal: 960 }, height: { ideal: 1280 } },
+        { width: { ideal: 720 }, height: { ideal: 1280 } },
+        { width: { ideal: 640 }, height: { ideal: 960 } }
+      ];
+
+  const facingConstraint: MediaTrackConstraints['facingMode'] = isIOS
+    ? { ideal: facingMode }
+    : facingMode;
+
+  const candidates: MediaStreamConstraints[] = baseResolutions.map((resolution) => ({
+    video: {
+      facingMode: facingConstraint,
+      width: resolution.width,
+      height: resolution.height,
+      frameRate: { ideal: 30, max: 30 }
+    },
+    audio: false
+  }));
+
+  candidates.push({
+    video: {
+      facingMode: facingConstraint,
+      frameRate: { ideal: 30 }
+    },
+    audio: false
+  });
+
+  candidates.push({ video: true, audio: false });
+
+  return candidates;
+};
+
+const waitForVideoReady = async (video: HTMLVideoElement, timeout = 5000) => {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error('ビデオの準備がタイムアウトしました'));
+    }, timeout);
+
+    const checkReady = () => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+        clearTimeout(timeoutId);
+        resolve();
+      } else {
+        requestAnimationFrame(checkReady);
+      }
+    };
+
+    checkReady();
+  });
+};
+
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,65 +108,108 @@ export function useCamera() {
     setCameraState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // Check if getUserMedia is supported
+      console.log('[Camera] Environment check:', {
+        isSecureContext: window.isSecureContext,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname,
+        hasNavigator: !!navigator,
+        hasMediaDevices: !!navigator.mediaDevices,
+        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        userAgent: navigator.userAgent
+      });
+
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          console.log('[Camera] Available devices:', {
+            total: devices.length,
+            videoDevices: videoDevices.length,
+            devices: videoDevices.map(d => ({ label: d.label, deviceId: d.deviceId }))
+          });
+        } catch (enumerateError) {
+          console.warn('[Camera] Could not enumerate devices:', enumerateError);
+        }
+      }
+
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.error('[Camera] getUserMedia not supported');
         throw new Error('カメラアクセスがサポートされていません');
       }
 
-      // Request camera access with constraints (portrait orientation)
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1080, max: 1920 },
-          height: { ideal: 1920, max: 2160 },
-          frameRate: { ideal: 30, max: 30 }
-        },
-        audio: false
-      };
+      const constraintCandidates = buildConstraintCandidates(facingMode);
+      let stream: MediaStream | null = null;
+      let lastError: unknown = null;
 
-      console.log('[Camera] Requesting camera access with constraints:', constraints);
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('[Camera] Camera stream obtained:', { streamId: stream.id, tracks: stream.getTracks().length });
-      
-      // Set up video element
-      if (videoRef.current) {
-        console.log('[Camera] Setting video stream');
-        videoRef.current.srcObject = stream;
-        
-        // Wait for video to be ready and start playing
-        await new Promise<void>((resolve, reject) => {
-          if (videoRef.current) {
-            const video = videoRef.current;
-            
-            video.onloadedmetadata = async () => {
-              console.log('[Camera] Video metadata loaded');
-              try {
-                await video.play();
-                console.log('[Camera] Video playing');
-                resolve();
-              } catch (playError) {
-                console.error('[Camera] Failed to play video:', playError);
-                reject(playError);
-              }
-            };
-            
-            video.onerror = (error) => {
-              console.error('[Camera] Video error:', error);
-              reject(new Error('ビデオの読み込みに失敗しました'));
-            };
-          }
-        });
+      for (const candidate of constraintCandidates) {
+        try {
+          console.log('[Camera] Attempting getUserMedia with constraints:', candidate);
+          stream = await navigator.mediaDevices.getUserMedia(candidate);
+          console.log('[Camera] Stream obtained with constraints:', candidate.video);
+          break;
+        } catch (candidateError) {
+          lastError = candidateError;
+          const err = candidateError as DOMException;
+          console.warn('[Camera] Constraint attempt failed:', {
+            name: err?.name,
+            message: err?.message,
+            constraints: candidate
+          });
+        }
       }
 
-      // Get actual capabilities
+      if (!stream) {
+        throw lastError instanceof Error
+          ? lastError
+          : new Error('適切なカメラ制約が見つかりませんでした');
+      }
+
+      if (videoRef.current) {
+        const video = videoRef.current;
+        console.log('[Camera] Setting video stream');
+        video.srcObject = stream;
+
+        await new Promise<void>((resolve, reject) => {
+          const handleLoaded = async () => {
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            try {
+              await video.play();
+              resolve();
+            } catch (playError) {
+              reject(playError);
+            }
+          };
+
+          const handleError = () => {
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            reject(new Error('ビデオの読み込みに失敗しました'));
+          };
+
+          video.onloadedmetadata = handleLoaded;
+          video.onerror = handleError;
+
+          if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+            handleLoaded();
+          }
+        });
+
+        await waitForVideoReady(video);
+      }
+
       const videoTrack = stream.getVideoTracks()[0];
-      const trackCapabilities = videoTrack.getCapabilities();
+      const trackCapabilities = typeof videoTrack.getCapabilities === 'function'
+        ? videoTrack.getCapabilities()
+        : ({} as MediaTrackCapabilities);
+      const trackSettings = typeof videoTrack.getSettings === 'function'
+        ? videoTrack.getSettings()
+        : ({} as MediaTrackSettings);
       
       setCapabilities({
-        width: videoRef.current?.videoWidth || 0,
-        height: videoRef.current?.videoHeight || 0,
-        facingMode: trackCapabilities.facingMode?.[0] || facingMode
+        width: videoRef.current?.videoWidth || trackSettings.width || 0,
+        height: videoRef.current?.videoHeight || trackSettings.height || 0,
+        facingMode: trackCapabilities.facingMode?.[0] || trackSettings.facingMode || facingMode
       });
 
       setCameraState({
@@ -113,6 +233,8 @@ export function useCamera() {
           errorMessage = 'カメラが見つかりません。デバイスにカメラが接続されているか確認してください。';
         } else if (error.name === 'NotSupportedError') {
           errorMessage = 'このブラウザではカメラがサポートされていません。';
+        } else if (error.name === 'ConstraintNotSatisfiedError') {
+          errorMessage = '指定されたカメラ設定に対応していません。別のデバイスまたは解像度をお試しください。';
         } else {
           errorMessage = error.message;
         }
@@ -136,64 +258,48 @@ export function useCamera() {
       hasSrcObject: !!videoRef.current?.srcObject,
       videoWidth: videoRef.current?.videoWidth || 0,
       videoHeight: videoRef.current?.videoHeight || 0,
-      readyState: videoRef.current?.readyState || 0
+      readyState: videoRef.current?.readyState || 0,
+      hasStateStream: !!cameraState.stream
     });
 
     if (!videoRef.current || !canvasRef.current) {
       throw new Error('カメラが初期化されていません');
     }
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    // Check if srcObject exists
-    if (!video.srcObject) {
+    const stream = (videoRef.current.srcObject as MediaStream | null) || cameraState.stream;
+    if (!stream) {
       throw new Error('カメラストリームが接続されていません');
     }
 
-    // Wait for video to be ready if it's not yet
-    if (video.readyState < 2) { // HAVE_CURRENT_DATA
-      console.log('[Camera] Waiting for video to be ready...');
-      await new Promise<void>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          reject(new Error('ビデオの準備がタイムアウトしました'));
-        }, 5000);
-
-        const checkReady = () => {
-          if (video.readyState >= 2) {
-            clearTimeout(timeoutId);
-            resolve();
-          } else {
-            setTimeout(checkReady, 100);
-          }
-        };
-
-        checkReady();
-      });
+    if (!videoRef.current.srcObject) {
+      videoRef.current.srcObject = stream;
     }
 
-    // Ensure video is playing and has dimensions
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.error('[Camera] Video dimensions are zero:', { width: video.videoWidth, height: video.videoHeight });
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    await waitForVideoReady(video);
+
+    const videoWidth = video.videoWidth || stream.getVideoTracks()[0]?.getSettings().width || 0;
+    const videoHeight = video.videoHeight || stream.getVideoTracks()[0]?.getSettings().height || 0;
+
+    if (videoWidth === 0 || videoHeight === 0) {
       throw new Error('ビデオが正しく読み込まれていません');
     }
-    
+
     const context = canvas.getContext('2d');
 
     if (!context) {
       throw new Error('Canvas context が取得できません');
     }
 
-    // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
     
     console.log('[Camera] Capturing photo:', { width: canvas.width, height: canvas.height });
 
-    // Draw video frame to canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert canvas to blob with error handling
     return new Promise((resolve, reject) => {
       try {
         canvas.toBlob((blob) => {
@@ -204,46 +310,32 @@ export function useCamera() {
             console.error('[Camera] toBlob returned null');
             reject(new Error('画像の生成に失敗しました'));
           }
-        }, 'image/jpeg', 0.8); // Use JPEG instead of PNG for better compatibility
+        }, 'image/jpeg', 0.8);
       } catch (error) {
         console.error('[Camera] toBlob error:', error);
         reject(error);
       }
     });
-  }, []);
+  }, [cameraState.stream]);
 
   const grabFrame = useCallback(async (quality = 0.7): Promise<Blob> => {
     if (!videoRef.current || !canvasRef.current) {
       throw new Error('カメラが初期化されていません');
     }
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (!video.srcObject) {
+    const stream = (videoRef.current.srcObject as MediaStream | null) || cameraState.stream;
+    if (!stream) {
       throw new Error('カメラストリームが接続されていません');
     }
 
-    // Wait for video to be ready if it's not yet
-    if (video.readyState < 2) {
-      console.log('[Camera] grabFrame: Waiting for video to be ready...');
-      await new Promise<void>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          reject(new Error('ビデオの準備がタイムアウトしました'));
-        }, 5000);
-
-        const checkReady = () => {
-          if (video.readyState >= 2) {
-            clearTimeout(timeoutId);
-            resolve();
-          } else {
-            setTimeout(checkReady, 100);
-          }
-        };
-
-        checkReady();
-      });
+    if (!videoRef.current.srcObject) {
+      videoRef.current.srcObject = stream;
     }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    await waitForVideoReady(video, 3000);
 
     if (video.videoWidth === 0 || video.videoHeight === 0) {
       throw new Error('ビデオフレームがまだ利用できません');
@@ -271,7 +363,7 @@ export function useCamera() {
         reject(error);
       }
     });
-  }, []);
+  }, [cameraState.stream]);
 
   const stopCamera = useCallback(() => {
     console.log('[Camera] Stopping camera');
@@ -287,7 +379,6 @@ export function useCamera() {
       };
     });
 
-    // Clear video element srcObject
     if (videoRef.current) {
       console.log('[Camera] Clearing video srcObject');
       videoRef.current.srcObject = null;
@@ -302,7 +393,6 @@ export function useCamera() {
     }
   }, [capabilities, initializeCamera, stopCamera]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCamera();

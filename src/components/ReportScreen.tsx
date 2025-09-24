@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { EnhancedPostureAnalysisResult } from '../services/EnhancedPostureAnalysisService';
 import LandmarkVisualizer from './LandmarkVisualizer';
 import { reportGenerationService } from '../services/ReportGenerationService';
+import { aiReportService } from '../services/AIReportService';
+import type { AIReportOptions, AIGeneratedReport } from '../services/AIReportService';
 import APIConfigModal from './APIConfigModal';
 import './APIConfigModal.css';
 
@@ -19,14 +21,18 @@ interface ReportScreenProps {
   onRestart: () => void;
 }
 
-export default function ReportScreen({ 
-  analysisResults, 
+export default function ReportScreen({
+  analysisResults,
   originalImages,
-  onRestart 
+  onRestart
 }: ReportScreenProps) {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingPNG, setIsGeneratingPNG] = useState(false);
   const [isAPIConfigOpen, setIsAPIConfigOpen] = useState(false);
+  const [isGeneratingAIReport, setIsGeneratingAIReport] = useState(false);
+  const [aiReport, setAIReport] = useState<AIGeneratedReport | null>(null);
+  const [aiError, setAIError] = useState<string | null>(null);
+  const [isAIEnabled, setIsAIEnabled] = useState(aiReportService.isAIAvailable());
 
   const handlePDFExport = async () => {
     setIsGeneratingPDF(true);
@@ -70,6 +76,47 @@ export default function ReportScreen({
     }
   };
 
+  const handleGenerateAIReport = useCallback(async () => {
+    if (!aiReportService.isAIAvailable()) {
+      setAIError('APIキーが設定されていません。先にAPIキーを登録してください。');
+      setIsAIEnabled(false);
+      return;
+    }
+
+    setIsGeneratingAIReport(true);
+    setAIError(null);
+
+    try {
+      const options: AIReportOptions = {
+        language: 'ja',
+        detailLevel: 'detailed',
+        includeExercises: true,
+        includeNutrition: false,
+        includeRiskAssessment: true,
+        includeLongTermPlan: false
+      };
+
+      const result = await aiReportService.generateAIReport(analysisResults, options);
+
+      if (result.success && result.report) {
+        setAIReport(result.report);
+      } else {
+        setAIError(result.error || 'AIレポートの生成に失敗しました。');
+      }
+    } catch (error) {
+      console.error('AI report generation failed:', error);
+      setAIError('AIレポート生成中にエラーが発生しました。');
+    } finally {
+      setIsGeneratingAIReport(false);
+      setIsAIEnabled(aiReportService.isAIAvailable());
+    }
+  }, [analysisResults]);
+
+  const handleAPIConfigClose = useCallback(() => {
+    setIsAPIConfigOpen(false);
+    setIsAIEnabled(aiReportService.isAIAvailable());
+  }, []);
+
   return (
     <div className="report-screen">
       <div className="report-header">
@@ -77,7 +124,6 @@ export default function ReportScreen({
         <p>姿勢分析が完了しました</p>
       </div>
 
-      {/* Analysis Images at top */}
       <div className="result-images">
         <div className="image-result">
           <LandmarkVisualizer
@@ -88,7 +134,7 @@ export default function ReportScreen({
             title="前額面解析結果"
           />
         </div>
-        
+
         <div className="image-result">
           <LandmarkVisualizer
             image={originalImages.sagittal.blob}
@@ -100,11 +146,9 @@ export default function ReportScreen({
         </div>
       </div>
 
-      {/* Advanced Kendall Analysis */}
       <div className="advanced-analysis-section">
         <h2>詳細Kendall分析結果</h2>
-        
-        {/* Primary Dysfunction */}
+
         <div className="primary-dysfunction">
           <h3>主要機能異常</h3>
           <div className="dysfunction-badge">
@@ -112,7 +156,6 @@ export default function ReportScreen({
           </div>
         </div>
 
-        {/* Posture Types */}
         <div className="posture-types-section">
           <h3>姿勢タイプ別詳細分析</h3>
           <div className="posture-types-grid">
@@ -188,7 +231,6 @@ export default function ReportScreen({
           </div>
         </div>
 
-        {/* Compensatory Chain */}
         {analysisResults.advancedKendallAnalysis.compensatoryChain[0] !== '代償パターンなし' && (
           <div className="compensatory-chain">
             <h3>代償連鎖パターン</h3>
@@ -203,7 +245,6 @@ export default function ReportScreen({
           </div>
         )}
 
-        {/* Risk Factors */}
         {analysisResults.advancedKendallAnalysis.riskFactors[0] !== '特記すべきリスク因子なし' && (
           <div className="risk-factors">
             <h3>⚠️ リスク要因</h3>
@@ -218,7 +259,6 @@ export default function ReportScreen({
           </div>
         )}
 
-        {/* Functional Limitations */}
         {analysisResults.advancedKendallAnalysis.functionalLimitations[0] !== '機能制限なし' && (
           <div className="functional-limitations">
             <h3>機能制限事項</h3>
@@ -236,47 +276,75 @@ export default function ReportScreen({
 
       <div className="export-controls">
         <h3>結果のエクスポート</h3>
-        
+
         <div className="export-buttons">
-          <button
-            onClick={handlePDFExport}
-            disabled={isGeneratingPDF}
-          >
+          <button onClick={handlePDFExport} disabled={isGeneratingPDF}>
             {isGeneratingPDF ? 'PDF生成中...' : 'PDFレポート'}
           </button>
 
-          <button
-            onClick={handlePNGExport}
-            disabled={isGeneratingPNG}
-            className="btn-secondary"
-          >
+          <button onClick={handlePNGExport} disabled={isGeneratingPNG} className="btn-secondary">
             {isGeneratingPNG ? 'PNG生成中...' : '画像として保存'}
           </button>
         </div>
       </div>
 
-      <div className="api-input-section">
-        <div className="api-input-container">
-          <label htmlFor="api-key-input" className="api-input-label">
-            OpenAI APIキー
-          </label>
-          <input
-            id="api-key-input"
-            type="password"
-            placeholder="sk-..."
-            className="api-key-input"
-            onChange={(e) => {
-              // Store API key securely (localStorage for now)
-              if (e.target.value.trim()) {
-                localStorage.setItem('openai_api_key', e.target.value.trim());
-              }
-            }}
-            defaultValue={localStorage.getItem('openai_api_key') || ''}
-          />
-          <small className="api-input-help">
-            APIキーは安全に保存され、ページを更新してもリセットされません
-          </small>
+      <div className="ai-settings">
+        <div className="ai-settings-header">
+          <div>
+            <h3>AI統合設定</h3>
+            <p>AIレポートを利用するにはAPIキーを登録し、レポートを生成してください。</p>
+          </div>
+          <button onClick={() => setIsAPIConfigOpen(true)} className="btn-api-config">
+            APIキーを設定
+          </button>
         </div>
+
+        <div className="ai-settings-actions">
+          <button
+            onClick={handleGenerateAIReport}
+            disabled={isGeneratingAIReport}
+            className="btn-ai-generate"
+          >
+            {isGeneratingAIReport ? 'AI分析中…' : 'AI分析レポートを生成'}
+          </button>
+
+          {!isAIEnabled && <span className="ai-status disabled">APIキー未設定</span>}
+          {isAIEnabled && !isGeneratingAIReport && <span className="ai-status enabled">APIキー設定済み</span>}
+        </div>
+
+        {aiError && <div className="ai-status-message error">{aiError}</div>}
+
+        {aiReport && (
+          <div className="ai-summary">
+            <h4>AIレポートハイライト</h4>
+            <p className="ai-summary-text">{aiReport.executiveSummary}</p>
+
+            <div className="ai-summary-section">
+              <h5>主要診断</h5>
+              <p>{aiReport.clinicalFindings.primaryDiagnosis}</p>
+            </div>
+
+            {aiReport.clinicalFindings.contributingFactors.length > 0 && (
+              <div className="ai-summary-section">
+                <h5>寄与因子</h5>
+                <ul>
+                  {aiReport.clinicalFindings.contributingFactors.slice(0, 3).map((factor, idx) => (
+                    <li key={idx}>{factor}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="ai-summary-section">
+              <h5>推奨ケア</h5>
+              <ul>
+                {aiReport.treatmentPlan.phases.slice(0, 3).map((phase, idx) => (
+                  <li key={idx}>{phase.name} — {phase.objectives[0]}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="disclaimer">
@@ -289,11 +357,7 @@ export default function ReportScreen({
         </button>
       </div>
 
-      <APIConfigModal 
-        isOpen={isAPIConfigOpen} 
-        onClose={() => setIsAPIConfigOpen(false)} 
-      />
-
+      <APIConfigModal isOpen={isAPIConfigOpen} onClose={handleAPIConfigClose} />
     </div>
   );
 }
