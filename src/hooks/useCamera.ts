@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 
 interface CameraState {
   stream: MediaStream | null;
@@ -26,7 +26,7 @@ export function useCamera() {
 
   const [capabilities, setCapabilities] = useState<CameraCapabilities | null>(null);
 
-  const initializeCamera = async (facingMode: 'user' | 'environment' = 'user') => {
+  const initializeCamera = useCallback(async (facingMode: 'user' | 'environment' = 'user') => {
     console.log('[Camera] Starting camera initialization:', { facingMode, timestamp: new Date().toISOString() });
     setCameraState(prev => ({ ...prev, isLoading: true, error: null }));
 
@@ -127,16 +127,51 @@ export function useCamera() {
       
       throw new Error(errorMessage);
     }
-  };
+  }, []);
 
-  const capturePhoto = async (): Promise<Blob> => {
-    if (!videoRef.current || !canvasRef.current || !cameraState.stream) {
+  const capturePhoto = useCallback(async (): Promise<Blob> => {
+    console.log('[Camera] capturePhoto called, checking refs:', {
+      hasVideoRef: !!videoRef.current,
+      hasCanvasRef: !!canvasRef.current,
+      hasSrcObject: !!videoRef.current?.srcObject,
+      videoWidth: videoRef.current?.videoWidth || 0,
+      videoHeight: videoRef.current?.videoHeight || 0,
+      readyState: videoRef.current?.readyState || 0
+    });
+
+    if (!videoRef.current || !canvasRef.current) {
       throw new Error('カメラが初期化されていません');
     }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    
+
+    // Check if srcObject exists
+    if (!video.srcObject) {
+      throw new Error('カメラストリームが接続されていません');
+    }
+
+    // Wait for video to be ready if it's not yet
+    if (video.readyState < 2) { // HAVE_CURRENT_DATA
+      console.log('[Camera] Waiting for video to be ready...');
+      await new Promise<void>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('ビデオの準備がタイムアウトしました'));
+        }, 5000);
+
+        const checkReady = () => {
+          if (video.readyState >= 2) {
+            clearTimeout(timeoutId);
+            resolve();
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+
+        checkReady();
+      });
+    }
+
     // Ensure video is playing and has dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
       console.error('[Camera] Video dimensions are zero:', { width: video.videoWidth, height: video.videoHeight });
@@ -175,33 +210,104 @@ export function useCamera() {
         reject(error);
       }
     });
-  };
+  }, []);
 
-  const stopCamera = () => {
-    if (cameraState.stream) {
-      cameraState.stream.getTracks().forEach(track => track.stop());
-      setCameraState(prev => ({
+  const grabFrame = useCallback(async (quality = 0.7): Promise<Blob> => {
+    if (!videoRef.current || !canvasRef.current) {
+      throw new Error('カメラが初期化されていません');
+    }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video.srcObject) {
+      throw new Error('カメラストリームが接続されていません');
+    }
+
+    // Wait for video to be ready if it's not yet
+    if (video.readyState < 2) {
+      console.log('[Camera] grabFrame: Waiting for video to be ready...');
+      await new Promise<void>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('ビデオの準備がタイムアウトしました'));
+        }, 5000);
+
+        const checkReady = () => {
+          if (video.readyState >= 2) {
+            clearTimeout(timeoutId);
+            resolve();
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+
+        checkReady();
+      });
+    }
+
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      throw new Error('ビデオフレームがまだ利用できません');
+    }
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Canvas context が取得できません');
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('フレームの取得に失敗しました'));
+          }
+        }, 'image/jpeg', quality);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    console.log('[Camera] Stopping camera');
+    setCameraState(prev => {
+      prev.stream?.getTracks().forEach(track => {
+        console.log('[Camera] Stopping track:', track.kind);
+        track.stop();
+      });
+      return {
         ...prev,
         stream: null,
         hasPermission: false
-      }));
-    }
-  };
+      };
+    });
 
-  const switchCamera = async () => {
+    // Clear video element srcObject
+    if (videoRef.current) {
+      console.log('[Camera] Clearing video srcObject');
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const switchCamera = useCallback(async () => {
     if (capabilities) {
       stopCamera();
       const newFacingMode = capabilities.facingMode === 'user' ? 'environment' : 'user';
       await initializeCamera(newFacingMode);
     }
-  };
+  }, [capabilities, initializeCamera, stopCamera]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   return {
     videoRef,
@@ -210,6 +316,7 @@ export function useCamera() {
     capabilities,
     initializeCamera,
     capturePhoto,
+    grabFrame,
     stopCamera,
     switchCamera
   };
