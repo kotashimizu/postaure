@@ -112,6 +112,49 @@
   background: var(--color-border);
 }
 
+.alignment-status {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translate(-50%, 0);
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  padding: 0.9rem 1.25rem;
+  border-radius: 18px;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: min(360px, calc(100vw - 2rem));
+  min-width: 200px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  z-index: 2;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+}
+
+.alignment-status.aligned {
+  background: rgba(46, 204, 113, 0.85);
+}
+
+.alignment-status.not-aligned {
+  background: rgba(241, 196, 15, 0.85);
+}
+
+.alignment-status-text {
+  font-weight: 600;
+}
+
+.alignment-confidence {
+  font-size: 0.75rem;
+  opacity: 0.9;
+}
+
 .camera-video {
   width: 100%;
   height: auto;
@@ -425,9 +468,15 @@
 /* Landmark Visualizer Styles */
 .landmark-visualizer {
   background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
+  padding: 1.75rem;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 18px 40px rgba(15, 32, 53, 0.12);
+  transition: box-shadow 0.3s ease;
+}
+
+.landmark-visualizer:hover {
+  box-shadow: 0 22px 48px rgba(15, 32, 53, 0.18);
 }
 
 .landmark-visualizer h3 {
@@ -443,10 +492,11 @@
 }
 
 .landmark-canvas {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
   max-width: 100%;
   height: auto;
+  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.25));
 }
 
 .landmark-legend {
@@ -491,9 +541,15 @@
   background-color: #9C27B0;
 }
 
+.legend-color.guide {
+  background: linear-gradient(135deg, #ffd700, #2196f3);
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.6);
+}
+
 /* Advanced Kendall Analysis Styles */
 .advanced-analysis-section {
-  margin: 3rem 0;
+  margin: 3rem auto;
+  max-width: 960px;
   padding: 2rem;
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   border-radius: 12px;
@@ -511,6 +567,7 @@
 .primary-dysfunction {
   text-align: center;
   margin-bottom: 2rem;
+  color: var(--color-text-primary);
 }
 
 .dysfunction-badge {
@@ -531,7 +588,7 @@
 
 .posture-types-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.5rem;
   margin-top: 1rem;
 }
@@ -852,56 +909,53 @@ textarea:focus-visible,
   }
 }
 
-/* AI Integration Section */
-.ai-integration-section {
-  background: linear-gradient(135deg, rgba(74, 144, 226, 0.05), rgba(155, 89, 182, 0.05));
+/* API Input Section */
+.api-input-section {
+  background: white;
   border: 1px solid rgba(74, 144, 226, 0.2);
   border-radius: 12px;
   padding: 1.5rem;
   margin-bottom: 2rem;
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.08);
 }
 
-.ai-integration-section h3 {
-  color: var(--primary-color);
+.api-input-container {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.api-input-label {
+  display: block;
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
   margin-bottom: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
-.ai-integration-section p {
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
-}
-
-.ai-buttons {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.btn-api-config {
-  background: linear-gradient(135deg, var(--primary-color), #5a67d8);
-  color: white;
-  border: none;
+.api-key-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid rgba(74, 144, 226, 0.2);
   border-radius: 8px;
-  padding: 0.75rem 1.5rem;
   font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
+  font-family: 'Courier New', monospace;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.3);
+  background: #fafbfc;
 }
 
-.btn-api-config:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
-  background: linear-gradient(135deg, #4a90e2, #5a67d8);
+.api-key-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
 }
 
-.btn-api-config:active {
-  transform: translateY(0);
+.api-input-help {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+  line-height: 1.4;
 }
 
 /* Modal Overlay */

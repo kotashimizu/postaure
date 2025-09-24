@@ -2,13 +2,8 @@ import { useState } from 'react';
 import type { EnhancedPostureAnalysisResult } from '../services/EnhancedPostureAnalysisService';
 import LandmarkVisualizer from './LandmarkVisualizer';
 import { reportGenerationService } from '../services/ReportGenerationService';
-import { sharingService } from '../services/SharingService';
-import { aiReportService } from '../services/AIReportService';
-import type { AIReportOptions, AIGeneratedReport } from '../services/AIReportService';
 import APIConfigModal from './APIConfigModal';
-import AIReportModal from './AIReportModal';
 import './APIConfigModal.css';
-import './AIReportModal.css';
 
 interface ImageData {
   blob: Blob;
@@ -30,13 +25,8 @@ export default function ReportScreen({
   onRestart 
 }: ReportScreenProps) {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  const [isGeneratingJSON, setIsGeneratingJSON] = useState(false);
   const [isGeneratingPNG, setIsGeneratingPNG] = useState(false);
   const [isAPIConfigOpen, setIsAPIConfigOpen] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
-  const [isGeneratingAIReport, setIsGeneratingAIReport] = useState(false);
-  const [currentAIReport, setCurrentAIReport] = useState<AIGeneratedReport | null>(null);
-  const [isAIReportModalOpen, setIsAIReportModalOpen] = useState(false);
 
   const handlePDFExport = async () => {
     setIsGeneratingPDF(true);
@@ -59,110 +49,6 @@ export default function ReportScreen({
     }
   };
 
-  const handleJSONExport = async () => {
-    setIsGeneratingJSON(true);
-    try {
-      await reportGenerationService.generateReport(
-        analysisResults,
-        originalImages,
-        {
-          format: 'json',
-          includeImages: false,
-          includeDetailedAnalysis: true,
-          language: 'ja'
-        }
-      );
-    } catch (error) {
-      console.error('JSON export failed:', error);
-      alert('JSONエクスポート中にエラーが発生しました。');
-    } finally {
-      setIsGeneratingJSON(false);
-    }
-  };
-
-  const handleImageShare = async () => {
-    setIsSharing(true);
-    try {
-      const imageBlobs = {
-        frontal: originalImages.frontal.blob,
-        sagittal: originalImages.sagittal.blob
-      };
-
-      const result = await sharingService.shareAnalysisResults(analysisResults, imageBlobs);
-      
-      if (!result.success) {
-        console.error('Share failed:', result.error);
-        // Fallback to download
-        handleImageDownload();
-      }
-    } catch (error) {
-      console.error('Share error:', error);
-      handleImageDownload();
-    } finally {
-      setIsSharing(false);
-    }
-  };
-
-  const handleAdvancedShare = async () => {
-    setIsSharing(true);
-    try {
-      await sharingService.shareAnalysisResults(analysisResults);
-    } catch (error) {
-      console.error('Advanced share failed:', error);
-    } finally {
-      setIsSharing(false);
-    }
-  };
-
-  const handleSocialShare = async (platform: 'twitter' | 'facebook' | 'linkedin') => {
-    const shareOptions = {
-      title: 'Postaure - 姿勢分析結果',
-      text: '詳細な姿勢分析を実施しました。科学的な手法でPostural assessmentを行っています。',
-      url: window.location.href
-    };
-
-    await sharingService.shareToSocialMedia(platform, shareOptions);
-  };
-
-  const handleGenerateAIReport = async () => {
-    if (!aiReportService.isAIAvailable()) {
-      alert('AI機能を使用するにはAPIエンドポイントの設定が必要です。');
-      setIsAPIConfigOpen(true);
-      return;
-    }
-
-    setIsGeneratingAIReport(true);
-    try {
-      const options: AIReportOptions = {
-        language: 'ja',
-        detailLevel: 'detailed',
-        includeExercises: true,
-        includeNutrition: true,
-        includeRiskAssessment: true,
-        includeLongTermPlan: true
-      };
-
-      const result = await aiReportService.generateAIReport(analysisResults, options);
-      
-      if (result.success && result.report) {
-        setCurrentAIReport(result.report);
-        setIsAIReportModalOpen(true);
-      } else {
-        alert(result.error || 'AI分析レポートの生成に失敗しました。');
-      }
-    } catch (error) {
-      console.error('AI report generation failed:', error);
-      alert('AI分析レポートの生成中にエラーが発生しました。');
-    } finally {
-      setIsGeneratingAIReport(false);
-    }
-  };
-
-  const handleCloseAIReportModal = () => {
-    setIsAIReportModalOpen(false);
-    setCurrentAIReport(null);
-  };
-
   const handlePNGExport = async () => {
     setIsGeneratingPNG(true);
     try {
@@ -182,26 +68,6 @@ export default function ReportScreen({
     } finally {
       setIsGeneratingPNG(false);
     }
-  };
-
-  const handleImageDownload = () => {
-    const frontalUrl = URL.createObjectURL(originalImages.frontal.blob);
-    const sagittalUrl = URL.createObjectURL(originalImages.sagittal.blob);
-    
-    const downloadImage = (url: string, filename: string) => {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    };
-    
-    downloadImage(frontalUrl, 'frontal-analysis.png');
-    downloadImage(sagittalUrl, 'sagittal-analysis.png');
-    
-    URL.revokeObjectURL(frontalUrl);
-    URL.revokeObjectURL(sagittalUrl);
   };
 
   return (
@@ -384,87 +250,32 @@ export default function ReportScreen({
             disabled={isGeneratingPNG}
             className="btn-secondary"
           >
-            {isGeneratingPNG ? 'PNG生成中...' : '画像レポート'}
-          </button>
-
-          <button
-            onClick={handleJSONExport}
-            disabled={isGeneratingJSON}
-            className="btn-secondary"
-          >
-            {isGeneratingJSON ? 'JSON生成中...' : 'データ(JSON)'}
-          </button>
-
-          <button
-            onClick={handleImageShare}
-            disabled={isSharing}
-            className="btn-secondary"
-          >
-            {isSharing ? '共有中...' : '📤 画像を共有'}
+            {isGeneratingPNG ? 'PNG生成中...' : '画像として保存'}
           </button>
         </div>
       </div>
 
-      <div className="sharing-section">
-        <h3>📤 共有オプション</h3>
-        <p>分析結果を様々な方法で共有できます</p>
-        
-        <div className="sharing-options">
-          <div className="share-row">
-            <h4>🔗 テキストで共有</h4>
-            <div className="share-buttons">
-              <button
-                onClick={handleAdvancedShare}
-                disabled={isSharing}
-                className="btn-share-text"
-              >
-                {isSharing ? '処理中...' : '📋 結果を共有'}
-              </button>
-              
-              <button
-                onClick={() => handleSocialShare('twitter')}
-                className="btn-twitter"
-              >
-                🐦 Twitter
-              </button>
-              
-              <button
-                onClick={() => handleSocialShare('facebook')}
-                className="btn-facebook"
-              >
-                📘 Facebook
-              </button>
-              
-              <button
-                onClick={() => handleSocialShare('linkedin')}
-                className="btn-linkedin"
-              >
-                💼 LinkedIn
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="ai-integration-section">
-        <h3>AI統合機能 (オプション)</h3>
-        <p>AIを活用した高度な分析と個別化レポート生成</p>
-        
-        <div className="ai-buttons">
-          <button
-            onClick={() => setIsAPIConfigOpen(true)}
-            className="btn-api-config"
-          >
-            ⚙️ API設定
-          </button>
-          
-          <button
-            onClick={handleGenerateAIReport}
-            disabled={isGeneratingAIReport || !aiReportService.isAIAvailable()}
-            className="btn-ai-report"
-          >
-            {isGeneratingAIReport ? '🔄 AI分析中...' : '🤖 AI分析レポート'}
-          </button>
+      <div className="api-input-section">
+        <div className="api-input-container">
+          <label htmlFor="api-key-input" className="api-input-label">
+            OpenAI APIキー
+          </label>
+          <input
+            id="api-key-input"
+            type="password"
+            placeholder="sk-..."
+            className="api-key-input"
+            onChange={(e) => {
+              // Store API key securely (localStorage for now)
+              if (e.target.value.trim()) {
+                localStorage.setItem('openai_api_key', e.target.value.trim());
+              }
+            }}
+            defaultValue={localStorage.getItem('openai_api_key') || ''}
+          />
+          <small className="api-input-help">
+            APIキーは安全に保存され、ページを更新してもリセットされません
+          </small>
         </div>
       </div>
 
@@ -483,12 +294,6 @@ export default function ReportScreen({
         onClose={() => setIsAPIConfigOpen(false)} 
       />
 
-      <AIReportModal
-        isOpen={isAIReportModalOpen}
-        onClose={handleCloseAIReportModal}
-        report={currentAIReport}
-        originalAnalysis={analysisResults}
-      />
     </div>
   );
 }
